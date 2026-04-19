@@ -1,0 +1,36 @@
+stage('Security Scan') {
+    environment {
+        SONAR_HOST_URL = 'http://sonarqube:9000'
+        IMAGE_NAME = 'ravuladockerhub/my-app:33'
+        TARGET_URL = 'http://host.docker.internal:8080'
+    }
+
+    steps {
+
+        script {
+
+            // 🔐 SonarQube (SAST)
+            withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
+                sh './sonar/sonar-scan.sh'
+            }
+
+            // 🐳 Trivy (Container Scan - FAIL build if critical issues)
+            sh './trivy/trivy-scan.sh $IMAGE_NAME'
+
+            // 🌐 ZAP (DAST - mark unstable, not fail)
+            catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                sh './zap/zap-baseline.sh $TARGET_URL'
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: '**/*.html', allowEmptyArchive: true
+        }
+    }
+}
+
+# I consolidated all security scans into a single stage to logically group SAST, container scanning, and DAST. 
+# I also configured different failure strategies—Trivy fails the build on critical vulnerabilities, 
+# while ZAP marks the build unstable to allow controlled risk handling.”

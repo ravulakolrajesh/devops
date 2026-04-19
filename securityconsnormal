@@ -1,0 +1,58 @@
+stage('Security Scan') {
+    environment {
+        SONAR_HOST_URL = 'http://sonarqube:9000'
+        IMAGE_NAME = 'ravuladockerhub/my-app:33'
+        TARGET_URL = 'http://host.docker.internal:8080'
+    }
+
+    steps {
+        script {
+
+            // 🔐 SonarQube (SAST)
+            withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
+                sh '''
+                docker run --rm \
+                  --network devops-net \
+                  -e SONAR_HOST_URL=$SONAR_HOST_URL \
+                  -v $(pwd):/usr/src \
+                  sonarsource/sonar-scanner-cli \
+                  -Dsonar.projectKey=my-app \
+                  -Dsonar.sources=. \
+                  -Dsonar.host.url=$SONAR_HOST_URL \
+                  -Dsonar.login=$SONAR_AUTH_TOKEN
+                '''
+            }
+
+            // 🐳 Trivy (FAIL build on HIGH/CRITICAL)
+            sh '''
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy image \
+              --severity HIGH,CRITICAL \
+              --exit-code 1 \
+              --no-progress \
+              $IMAGE_NAME
+            '''
+
+            // 🌐 ZAP (DAST → mark UNSTABLE, not fail)
+            catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                sh '''
+                docker run --rm \
+                  -v $(pwd):/zap/wrk:rw \
+                  --user $(id -u):$(id -g) \
+                  owasp/zap2docker-stable \
+                  zap-baseline.py \
+                  -t $TARGET_URL \
+                  -r zap-report.html \
+                  -I
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: '*.html', allowEmptyArchive: true
+        }
+    }
+}

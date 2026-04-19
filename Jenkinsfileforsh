@@ -1,0 +1,29 @@
+stage('Build Image') {
+    steps {
+        sh './docker/build.sh ravuladockerhub/my-app:33'
+    }
+}
+
+stage('Sonar Scan') {
+    steps {
+        sh './sonar/sonar-scan.sh'
+    }
+}
+
+stage('Trivy Scan') {
+    steps {
+        sh './trivy/trivy-scan.sh ravuladockerhub/my-app:33'
+    }
+}
+
+stage('Run App') {
+    steps {
+        sh 'docker run -d -p 8080:8080 --name my-app ravuladockerhub/my-app:33'
+    }
+}
+
+stage('ZAP Scan') {
+    steps {
+        sh './zap/zap-baseline.sh http://host.docker.internal:8080'
+    }
+}
