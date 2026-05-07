@@ -1,0 +1,148 @@
+# Helm Installation Guide
+# curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+# winget install helm.helm
+# helm version
+# helm repo add bitnami https://charts.bitnami.com/bitnami
+# helm repo update
+
+# docker ps
+# docker images
+# docker volume ls
+# docker context ls
+# docker context use default
+
+# export DOCKER_HOST=unix:///var/run/docker.sock
+# docker images
+
+# Download the binary for AMD64 (common for most PCs)
+# curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
+
+# # Make the binary executable
+# chmod +x ./kind
+
+# # Move it to a directory in your PATH
+# sudo mv ./kind /usr/local/bin/kind
+
+# # Verify the installation
+# kind version
+
+# We cannot use a standard application image (like nginx, python, or my-app) to create a Kind cluster.
+# Kind requires a very specific type of image to function. 
+# The "Node" is a Container: In Kind, each "node" is actually a Docker container.
+# The kindest/node image is essentially a mini-OS (usually based on Ubuntu) that has systemd, containerd, kubelet, and kubeadm pre-installed 
+# and configured to run inside a container.Missing Pieces: Your application images only contain your code and its dependencies. 
+# They lack the background services and tools required to manage a Kubernetes cluster.
+
+# Pull a specific version (highly recommended for stability)
+# docker pull kindest/node:v1.31.0
+
+## Kubernetes cluster setup (if you don't have one) is required before installing Helm charts. You can use Minikube, Kind, or any managed Kubernetes service.
+# also pulls kindest/node if not already present locally.
+# we also have alternative to kindest/node. we can use k3s or vcluster images. k3s is light weight and vcluster allows us to create virtual clusters inside a Kubernetes cluster.
+# kind create cluster --name my-cluster
+# kind create cluster --image my-lab-node:v1
+
+## In Kind, the cluster is made up of one or more Docker containers acting as "Nodes." Each node runs a Kubernetes control plane and/or worker components.
+## The Cluster doesn't "own" images. If you have a cluster with three nodes (e.g., one control-plane and two workers), you usually want the image loaded 
+## onto all of them. If you don't specify, Kind usually loads it onto every node so that your app can run anywhere.
+
+## k3s setup
+# wget -q -O - https://githubusercontent.com | bash
+# curl -sfL https://get.k3s.io | sh -
+# k3d cluster create my-k3s-cluster
+# kubectl config get-clusters
+# sudo kubectl get nodes
+
+# kubectl config get-contexts
+# kubectl config use-context kind-my-cluster
+
+# Example: Tagging a specific version as 'my-custom-node'
+# docker tag kindest/node kind-node
+# docker tag 17b4349087dd kind-node
+# kind load docker-image kind-node
+# kind load docker-image my-app:latest --name my-lab
+# kubectl run test-nginx --image=nginx:latest
+# kubectl get pods
+
+# docker exec -it my-cluster-control-plane crictl images
+
+# kubectl run my-app --image=my-app:latest --image-pull-policy=IfNotPresent
+
+## Helm Installation
+
+# helm install my-web-server bitnami/nginx
+# helm repo add argo https://argoproj.github.io/argo-helm
+# helm repo update
+# helm update vs helm upgrade
+# helm list
+# helm repo list
+# helm search repo bitnami/nginx
+
+# # perform dry-run installation
+# helm install my-test bitnami/nginx --dry-run --debug
+
+# # Install Nginx
+# helm install my-nginx bitnami/nginx
+
+# Wait for the pod to be "Running"
+# kubectl get pods -w
+
+# # Port-forward to view it in your Windows browser
+# kubectl port-forward svc/my-nginx 8080:80
+# export SERVICE_PORT=$(kubectl get --namespace default -o jsonpath="{.spec.ports[0].port}" services my-test-nginx)
+# export SERVICE_IP=$(kubectl get svc --namespace default my-test-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# echo "http://${SERVICE_IP}:${SERVICE_PORT}"
+
+# curl https://githubusercontent.com | bash
+# curl -LO "https://k8s.io(curl -L -s https://k8s.io)/bin/linux/amd64/kubectl"
+# sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+# [ $(uname -m) = x86_64 ] && curl -Lo ./kind https://k8s.io
+# chmod +x ./kind
+# sudo mv ./kind /usr/local/bin/kind
+# kind create cluster --name my-cluster
+# helm list
+
+# helm install my-airflow bitnami/nginx
+# helm install my-airflow bitnami/nginx-ingress-controller
+# helm install my-airflow bitnami/airflow
+# helm install my-airflow bitnami/apache
+# helm install my-airflow bitnami/argo-cd
+# helm install my-airflow bitnami/cert-manager
+#   kubectl port-forward --namespace default svc/my-airflow-argocd-server 8080:80 & export URL=http://127.0.0.1:8080/
+#   echo "Argo CD URL: http://127.0.0.1:8080/"
+#   echo "Username: \"admin\""
+#   echo "Password: $(kubectl -n default get secret argocd-secret -o jsonpath="{.data.clearPassword}" | base64 -d)"
+
+
+# # to create helm chart for my application
+# helm create my-app-chart
+# this creates a folder named my-app-chart with several files. important ones are values.yaml, templates
+# helm link ./my-app-chart
+
+
+# Add the ArgoCD repository
+# helm uninstall my-argo --namespace argocd
+# kubectl delete namespace argocd
+# kubectl delete crd $(kubectl get crd | grep argoproj.io | awk '{print $1}')   // deletes all existing argocd CRDs
+# helm repo add argo https://argoproj.github.io/argo-helm
+# helm repo update
+# Install it with one command
+# helm install my-argo argo/argo-cd --namespace argocd --create-namespace 
+# helm install my-argo argo/argo-cd --namespace argocd --create-namespace --set crds.install=false
+
+# kubectl get pods -n argocd
+# kubectl port-forward --namespace argocd svc/my-argo-argocd-server 8080:80 & # export URL=http://127.0.0.1:8080/
+# kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 --decode
+
+
+
+# # if install in wsl
+# ===================
+# which helm
+# helm env
+# Location: /usr/local/bin/helm
+# Configuration Path: $HOME/.config/helm (Stores repositories and local settings).
+# Data Path: $HOME/.local/share/helm (Stores Helm plugins and other data).
+# Cache Path: $HOME/.cache/helm (Stores downloaded chart information and index files).
+
+# kubectl get svc --no-headers | grep argo-cd | awk '{print #1}' | xargs kubectl delete svc

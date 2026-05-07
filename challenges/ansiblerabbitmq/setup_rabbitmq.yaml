@@ -1,0 +1,90 @@
+---
+- name: Setup RabbitMQ in Docker
+  hosts: localhost
+  connection: local
+  tasks:
+  # --- RABBITMQ SETUP ---
+    - name: Create a persistent volume for RabbitMQ
+      community.docker.docker_volume:
+        name: rabbitmq-data
+        state: present
+
+    - name: Run RabbitMQ container
+      community.docker.docker_container:
+        name: my-rabbitmq
+        image: rabbitmq:3-management
+        state: started
+        restart_policy: always
+        published_ports:
+          - "5672:5672"
+          - "15672:15672"
+        volumes:
+          - rabbitmq-data:/var/lib/rabbitmq
+        env:
+          RABBITMQ_DEFAULT_USER: admin
+          RABBITMQ_DEFAULT_PASS: MySecurePassword
+  
+# --- REDIS SETUP ---
+    - name: create a persistent volume for Redis
+      community.docker.docker_volume:
+        name: redis-data
+        state: present
+    
+    - name: Run Redis container
+      community.docker.docker_container:
+        name: my-redis
+        image: redis:latest
+        state: started
+        restart_policy: always
+        published_ports:
+          - "6379:6379"
+        volumes:
+          - redis-data:/data
+        command: ["redis-server", "--appendonly", "yes"]
+
+# shortcut to comment and uncomment multiple lines in vscode is: Ctrl + /
+
+# docker run -d --name my-rabbitmq -p 5672:5672 -p 15672:15672 -v 
+# rabbitmq-data:/var/lib/rabbitmq rabbitmq:3-management
+# rabbitmq:3-management: Downloads the version that includes the Management UI pre-installed and enabled.
+#-p 5672:5672: Maps the message port (AMQP).
+#-p 15672:15672: Maps the web dashboard port.
+#--name my-rabbitmq: Gives your container a friendly name.
+#https://localhost:15672
+#guest/guest
+# docker exec -it my-redis redis-cli ping // should return PONG if Redis is running correctly
+
+# docker run -d --name my-redis -p 6379:6379 -v redis-data:/data redis:latest redis-server \
+# --appendonly yes
+
+# sudo apt update && sudo apt upgrade -y
+# sudo apt install curl gnupg -y
+# sudo apt install rabbitmq-server -y
+# sudo service rabbitmq-server start
+# sudo service rabbitmq-server status
+# sudo systemctl enable rabbitmq-server
+# sudo rabbitmq-plugins enable rabbitmq_management
+# sudo rabbitmqctl add_user admin yourpassword
+# sudo rabbitmqctl set_user_tags admin administrator
+# sudo rabbitmqctl set_permissions -p / admin ".*" ".*" ".*"
+# sudo service rabbitmq-server restart
+# sudo systemctl restart rabbitmq-server
+
+# paths to all the installation files
+# ===================================
+# https://localhost:15672
+# admin / credentials
+# the files are speard across:
+# Binaries & CLI tools: /usr/sbin/ (contains rabbitmq-server, rabbitmqctl, etc.).
+# Configuration files: /etc/rabbitmq/.
+# Database & Data: /var/lib/rabbitmq/.
+# Log files: /var/log/rabbitmq/.
+
+# cleanup
+# =======
+# sudo service rabbitmq-server stop
+# sudo apt-get purge -y rabbitmq-server erlang*
+# sudo rm -rf /var/lib/rabbitmq/
+# sudo rm -rf /etc/rabbitmq/
+# sudo rm -rf /var/log/rabbitmq/
+# sudo apt-get autoremove -y

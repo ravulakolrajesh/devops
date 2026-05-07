@@ -1,0 +1,70 @@
+---
+- name: Install Node Exporter on WSL
+  hosts: localhost
+  connection: local
+  become: yes
+  vars:
+    node_exporter_version: "1.11.1"
+    node_exporter_user: "node_exporter"
+    node_exporter_group: "node_exporter"
+    node_exporter_bin_dir: "/usr/local/bin"
+
+  tasks:
+    - name: 1. Create Node Exporter group and user
+      block:
+        - group:
+            name: "{{ node_exporter_group }}"
+            system: yes
+        - user:
+            name: "{{ node_exporter_user }}"
+            group: "{{ node_exporter_group }}"
+            system: yes
+            shell: /sbin/nologin
+            create_home: no
+
+    - name: 2. Check if Node Exporter is already installed
+      stat:
+        path: "{{ node_exporter_bin_dir }}/node_exporter"
+      register: node_exporter_bin
+
+    - name: 3. Download and Install (Only if missing)
+      when: not node_exporter_bin.stat.exists
+      block:
+        - get_url:
+            url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+            dest: "/tmp/node_exporter.tar.gz"
+        - unarchive:
+            src: "/tmp/node_exporter.tar.gz"
+            dest: "/tmp"
+            remote_src: yes
+        - copy:
+            src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+            dest: "{{ node_exporter_bin_dir }}/node_exporter"
+            owner: "{{ node_exporter_user }}"
+            group: "{{ node_exporter_group }}"
+            mode: '0755'
+            remote_src: yes
+
+    - name: 4. Create systemd service
+      copy:
+        dest: /etc/systemd/system/node_exporter.service
+        content: |
+          [Unit]
+          Description=Node Exporter
+          After=network.target
+
+          [Service]
+          User={{ node_exporter_user }}
+          Group={{ node_exporter_group }}
+          Type=simple
+          ExecStart={{ node_exporter_bin_dir }}/node_exporter
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: 5. Start and Enable Service
+      systemd:
+        name: node_exporter
+        state: restarted
+        enabled: yes
+        daemon_reload: yes

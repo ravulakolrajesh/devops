@@ -35,3 +35,30 @@ services:
 volumes:
   grafana_data:
   jenkins_data:
+
+# created this docker compose file for running both jenkins and grafana in the same network
+# and nginx as a reverse proxy to access both services through the same domain. 
+# The nginx configuration file should be created in the ./nginx/default.conf path and 
+# should contain the necessary configuration to route traffic to both jenkins and grafana 
+# based on the URL path. The SSL certificates should be placed in the ./nginx/ssl directory 
+# and the .htpasswd file should contain the necessary credentials for basic authentication.
+
+#docker compose up -d --force-recreate --build
+#docker rm -f jenkins
+#docker compose up -d --build
+#docker compose down
+#docker compose up -d --build
+## 127.0.0.1 grafana.local
+## 127.0.0.1 jenkins.local
+#sudo apt update
+#sudo apt install nginx -y
+#sudo mkdir -p /etc/nginx/ssl
+#sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/ssl/selfsigned.key -out /etc/nginx/ssl/selfsigned.crt
+#sudo apt install apache2-utils -y
+#sudo htpasswd -c /etc/nginx/.htpasswd admin	// admin is the password that i created when it asked
+
+#cd /mnt/e/Projects/devops/challenges/JenkinsGrafana/nginx
+#sudo cp /etc/nginx/ssl/* ssl
+
+# jenkins.local:8080
+# grafana.local:3000

@@ -1,0 +1,14 @@
+Understanding the workflow is key to managing your local environment effectively.
+In your WSL2 setup, the process moves from the Windows host into a virtualized Linux environment, where Docker containers act as your "hardware.
+"The Full Kubernetes Workflow (WSL2 + Kind)System Preparation (Windows Host)Install WSL 2 and a Linux distribution like Ubuntu from the Microsoft Store.
+Install Docker Desktop and ensure "WSL2 based engine" is enabled in settings to allow Linux to use the Docker daemon.
+CLI Tools Installation (Inside WSL/Ubuntu)kubectl: The primary command-line tool for controlling Kubernetes.
+Kind: The tool that uses Docker to spin up local Kubernetes nodes as containers.
+Cluster Creation: Running kind create cluster tells Kind to pull a node image (e.g., kindest/node:v1.31.0) if it’s missing.
+Kind then starts a Docker container that contains all the Kubernetes "guts" (API server, kubelet, etc.).
+Local Image Prep: You build your application image on your host using docker build -t my-app:latest ..Because the cluster nodes are isolated containers, they can't "see" your host's Docker library. 
+You must use kind load docker-image my-app:latest to push that image into the node's internal storage.
+Application Deployment: You create a Deployment or Pod using kubectl. 
+Critical Step: You must set imagePullPolicy: IfNotPresent in your YAML so Kubernetes checks the node's internal storage first instead of trying to download the image from the internet.
+Accessing the AppSince your app is inside a container within another container, it’s not reachable by default.You use kubectl port-forward to create a bridge between your local Windows machine 
+and the Pod inside the cluster.

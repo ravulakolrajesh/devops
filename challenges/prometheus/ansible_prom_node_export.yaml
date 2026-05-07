@@ -1,0 +1,118 @@
+---
+- name: Install Prometheus
+  hosts: localhost
+  connection: local
+  become: yes
+  vars:
+    prometheus_version: "3.11.3"
+    prometheus_user: "prometheus"
+    prometheus_group: "prometheus"
+    prometheus_install_dir: "/usr/local/bin"
+    prometheus_data_dir: "/var/lib/prometheus"
+    prometheus_config_dir: "/etc/prometheus"
+
+  tasks:
+    - name: 1. Ensure Prometheus group exists
+      ansible.builtin.group:
+        name: "{{ prometheus_group }}"
+        system: yes
+        state: present
+
+    - name: 2. Ensure Prometheus user exists
+      ansible.builtin.user:
+        name: "{{ prometheus_user }}"
+        group: "{{ prometheus_group }}"
+        system: yes
+        state: present
+        shell: /sbin/nologin
+        create_home: no
+
+    - name: 3. Cleanup any accidental directories named like the config file
+      file:
+        path: "{{ prometheus_config_dir }}/prometheus.yml"
+        state: absent
+
+    - name: 4. Ensure Prometheus directories exist with correct ownership
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ prometheus_user }}"
+        group: "{{ prometheus_group }}"
+        mode: '0755'
+      with_items:
+        - "{{ prometheus_config_dir }}"
+        - "{{ prometheus_data_dir }}"
+
+    - name: 5. Check if Prometheus binary is present
+      stat:
+        path: "{{ prometheus_install_dir }}/prometheus"
+      register: prometheus_bin
+
+    - name: 6. Download and Install Binaries (Only if missing)
+      block:
+        - name: Download Prometheus tarball
+          get_url:
+            url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+            dest: "/tmp/prometheus.tar.gz"
+            mode: '0644'
+
+        - name: Extract Prometheus
+          unarchive:
+            src: "/tmp/prometheus.tar.gz"
+            dest: "/tmp/"
+            remote_src: yes
+
+        - name: Copy binaries to install path
+          copy:
+            src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+            dest: "{{ prometheus_install_dir }}/{{ item }}"
+            owner: "{{ prometheus_user }}"
+            group: "{{ prometheus_group }}"
+            mode: '0755'
+            remote_src: yes
+          with_items:
+            - "prometheus"
+            - "promtool"
+      when: not prometheus_bin.stat.exists
+
+    - name: 7. Always ensure default prometheus.yml exists
+      copy:
+        dest: "{{ prometheus_config_dir }}/prometheus.yml"
+        content: |
+          global:
+            scrape_interval: 15s
+          scrape_configs:
+            - job_name: 'prometheus'
+              static_configs:
+                - targets: ['localhost:9090']
+            - job_name: 'node_exporter'
+              static_configs:
+                - targets: ['localhost:9100']
+
+    - name: 8. Create systemd service
+      copy:
+        dest: /etc/systemd/system/prometheus.service
+        content: |
+          [Unit]
+          Description=Prometheus
+          After=network.target
+
+          [Service]
+          User={{ prometheus_user }}
+          Group={{ prometheus_group }}
+          Type=simple
+          ExecStart={{ prometheus_install_dir }}/prometheus \
+            --config.file={{ prometheus_config_dir }}/prometheus.yml \
+            --storage.tsdb.path={{ prometheus_data_dir }} \
+            --web.listen-address=:9090
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: 9. Start and Enable Prometheus
+      systemd:
+        name: prometheus
+        state: restarted
+        enabled: yes
+        daemon_reload: yes

@@ -1,0 +1,222 @@
+---
+- name: Install Prometheus
+  hosts: localhost
+  connection: local
+  become: yes
+  vars:
+    prometheus_version: "3.11.3"
+    prometheus_user: "prometheus"
+    prometheus_group: "prometheus"
+    prometheus_install_dir: "/usr/local/bin"
+    prometheus_data_dir: "/var/lib/prometheus"
+    prometheus_config_dir: "/etc/prometheus"
+
+  tasks:
+    - name: 1. Ensure Prometheus group exists
+      ansible.builtin.group:
+        name: "{{ prometheus_group }}"
+        system: yes
+        state: present
+
+    - name: 2. Ensure Prometheus user exists
+      ansible.builtin.user:
+        name: "{{ prometheus_user }}"
+        group: "{{ prometheus_group }}"
+        system: yes
+        state: present
+        shell: /sbin/nologin
+        create_home: no
+
+    - name: 3. Cleanup any accidental directories named like the config file
+      file:
+        path: "{{ prometheus_config_dir }}/prometheus.yml"
+        state: absent
+
+    - name: 4. Ensure Prometheus directories exist with correct ownership
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ prometheus_user }}"
+        group: "{{ prometheus_group }}"
+        mode: '0755'
+      with_items:
+        - "{{ prometheus_config_dir }}"
+        - "{{ prometheus_data_dir }}"
+
+    - name: 5. Check if Prometheus binary is present
+      stat:
+        path: "{{ prometheus_install_dir }}/prometheus"
+      register: prometheus_bin
+
+    - name: 6. Download and Install Binaries (Only if missing)
+      block:
+        - name: Download Prometheus tarball
+          get_url:
+            url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+            dest: "/tmp/prometheus.tar.gz"
+            mode: '0644'
+
+        - name: Extract Prometheus
+          unarchive:
+            src: "/tmp/prometheus.tar.gz"
+            dest: "/tmp/"
+            remote_src: yes
+
+        - name: Copy binaries to install path
+          copy:
+            src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+            dest: "{{ prometheus_install_dir }}/{{ item }}"
+            owner: "{{ prometheus_user }}"
+            group: "{{ prometheus_group }}"
+            mode: '0755'
+            remote_src: yes
+          with_items:
+            - "prometheus"
+            - "promtool"
+      when: not prometheus_bin.stat.exists
+
+    - name: 7. Always ensure default prometheus.yml exists
+      copy:
+        dest: "{{ prometheus_config_dir }}/prometheus.yml"
+        content: |
+          global:
+            scrape_interval: 15s
+          scrape_configs:
+            - job_name: 'prometheus'
+              static_configs:
+                - targets: ['localhost:9090']
+        owner: "{{ prometheus_user }}"
+        group: "{{ prometheus_group }}"
+        mode: '0644'
+
+    - name: 8. Create systemd service
+      copy:
+        dest: /etc/systemd/system/prometheus.service
+        content: |
+          [Unit]
+          Description=Prometheus
+          After=network.target
+
+          [Service]
+          User={{ prometheus_user }}
+          Group={{ prometheus_group }}
+          Type=simple
+          ExecStart={{ prometheus_install_dir }}/prometheus \
+            --config.file={{ prometheus_config_dir }}/prometheus.yml \
+            --storage.tsdb.path={{ prometheus_data_dir }} \
+            --web.listen-address=:9090
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: 9. Start and Enable Prometheus
+      systemd:
+        name: prometheus
+        state: restarted
+        enabled: yes
+        daemon_reload: yes
+      
+
+# cleaning any previous installation
+#sudo systemctl list-units | grep prometheus
+#sudo systemctl stop prometheus node_exporter
+#sudo systemctl disable prometheus node_exporter
+#sudo rm /etc/systemd/system/prometheus.service
+#sudo rm /etc/systemd/system/node_exporter.service
+#sudo systemctl daemon-reload
+#sudo systemctl reset-failed
+#sudo rm /usr/local/bin/prometheus /usr/local/bin/promtool /usr/local/bin/node_exporter
+#sudo rm -rf /etc/prometheus /var/lib/prometheus
+#sudo userdel prometheus
+#sudo userdel node_exporter
+
+# ansible-playbook install_prometheus.yml --ask-become-pass
+
+# Create the user
+#sudo useradd --no-create-home --shell /bin/false prometheus
+
+# Create directories
+#sudo mkdir /etc/prometheus
+#sudo mkdir /var/lib/prometheus
+
+# Set ownership
+#sudo chown prometheus:prometheus /etc/prometheus /var/lib/prometheus
+
+# Download (adjust version if needed)
+#cd /tmp
+#curl -LO https://github.com/prometheus/prometheus/releases/download/v3.11.3/prometheus-3.11.3.linux-amd64.tar.gz
+
+# Extract
+#tar xvf prometheus-3.11.3.linux-amd64.tar.gz
+
+# Move binaries to a global location
+#sudo cp prometheus-3.11.3.linux-amd64/prometheus /usr/local/bin/
+#sudo cp prometheus-3.11.3.linux-amd64/promtool /usr/local/bin/
+#sudo cp -r prometheus-3.11.3.linux-amd64/consoles /etc/prometheus
+#sudo cp -r prometheus-3.11.3.linux-amd64/console_libraries /etc/prometheus
+#sudo cp /tmp/prometheus-3.11.3.linux-amd64/prometheus.yml /etc/prometheus/
+
+#sudo chown -R prometheus:prometheus /etc/prometheus /var/lib/prometheus
+#sudo chown prometheus:prometheus /usr/local/bin/prometheus /usr/local/bin/promtool
+
+# Create the config file
+#sudo nano /etc/prometheus/prometheus.yml
+#sudo nano /etc/systemd/system/prometheus.service
+
+#sudo systemctl daemon-reload
+#sudo systemctl enable --now prometheus
+#sudo systemctl start prometheus
+
+# Check if it worked
+#sudo systemctl status prometheus
+
+# Give ownership to the user
+#sudo chown prometheus:prometheus /usr/local/bin/prometheus /usr/local/bin/promtool
+
+# Docker Setup
+#mkdir ~/prometheus-docker && cd ~/prometheus-docker
+#nano prometheus.yml
+#global:
+#  scrape_interval: 15s
+
+#scrape_configs:
+#  - job_name: 'prometheus'
+#    static_configs:
+#      - targets: ['localhost:9090']
+
+#  - job_name: 'node_exporter'
+#    static_configs:
+#      - targets: ['node-exporter:9100'] # Note: Using the service name
+
+#nano docker-compose.yml
+#services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: always
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    restart: always
+
+volumes:
+  prometheus-data:
+
+docker compose up -d
+
+Crucial Tip for Docker Networking
+In your prometheus.yml, you might have noticed I used node-exporter:9100 instead of localhost:9100.
+
+Why? Inside a Docker network, each container is like its own separate machine. localhost inside the Prometheus container refers only to itself. To "see" the other container, it must use the service name defined in your docker-compose.yml.
+Isolation: If you want to delete Prometheus, you just delete the container. No leftover files in /etc or /usr/local/bin.
+Networking: Docker creates a private network. Prometheus can find Node Exporter just by using the name node-exporter:9100.
+No Systemd: Docker manages the "restart on crash" logic itself. 
